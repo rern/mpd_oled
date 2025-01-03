@@ -1,10 +1,10 @@
 # Maintainer: rern <rernrern@gmail.com>
 
-pkgname=audio_spectrum_oled
+pkgname=mpd_oled
 pkgver=0.03
 pkgrel=1
 pkgdesc='Audio spectrum OLED for Raspberry Pi'
-url=https://github.com/rern/audio_spectrum_oled
+url=https://github.com/rern/mpd_oled
 arch=(armv6h armv7h aarch64)
 license=(MIT)
 depends=(alsa-lib fftw i2c-tools)
