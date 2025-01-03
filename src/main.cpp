@@ -115,6 +115,7 @@ public:
   int spi_cs = OLED_SPI_CS0;     // SPI CS - 0: CS0, 1: CS1
   Player player;
   string cava_prog_name = "cava";
+  bool allinfo = false;
   bool logo = false;
   bool sleep = false;
 
@@ -164,7 +165,7 @@ Options
                 2 - 24h leading 0, 3 - 24h no leading 0
   -d         use USA date format MM-DD-YYYY (default: DD-MM-YYYY)
   -P <val>   pause screen type: p - play (default), s - stop
-  -k         cava executable name is cava (default: mpd_oled_cava)
+  -k         cava executable name is cava (default: cava)
   -c         cava input method and source (default: '%s,%s')
              e.g. 'fifo,/tmp/my_fifo', 'alsa,hw:5,0', 'pulse'
   -R         rotate display 180 degrees
@@ -177,6 +178,7 @@ Options
   -D <gpio>  SPI DC GPIO number (default: 24)
   -S <num>   SPI CS number (default: 0)
   -p <plyr>  Player: mpd, moode, volumio, runeaudio (default: detected)
+  -A         display all info (default instaed of spectrum only)
   -L         display rAudio logo
   -X         sleep
 Example :
@@ -194,7 +196,7 @@ void OledOpts::process_command_line(int argc, char **argv)
 
   handle_long_opts(argc, argv);
 
-  while ((c = getopt(argc, argv, ":ho:b:g:f:s:C:dP:kc:RI:a:B:r:D:S:p:LX")) !=
+  while ((c = getopt(argc, argv, ":ho:b:g:f:s:C:dP:kc:RI:a:B:r:D:S:p:ALX")) !=
          -1) {
     if (common_opts(c, optopt))
       continue;
@@ -359,6 +361,10 @@ void OledOpts::process_command_line(int argc, char **argv)
       player.set_name(arg_id);
       break;
     }
+
+    case 'A':
+      allinfo = true;
+      break;
 
     case 'L':
       logo = true;
@@ -632,8 +638,11 @@ int start_idle_loop(ArduiPi_OLED &display, const OledOpts &opts)
       display.clearDisplay();
       pthread_mutex_lock(&disp_info_lock);
       display.invertDisplay(get_invert(opts.invert));
-//      draw_display(display, disp_info);
-      draw_spectrum(display, 0, 0, 128, 64, disp_info.spect);
+      if (opts.allinfo)
+        draw_display(display, disp_info);
+      else
+        draw_spectrum(display, 0, 0, 128, 64, disp_info.spect);
+      
       pthread_mutex_unlock(&disp_info_lock);
       display.display();
     }
@@ -668,16 +677,14 @@ int main(int argc, char **argv)
                     opts.rotate180))
     opts.error("could not initialise OLED");
 
-  if ( opts.logo )
-  {
+  if ( opts.logo ) {
     display.clearDisplay();
     draw_logo(display);
     display.display();
     exit(0);
   }
   
-  if ( opts.sleep )
-  {
+  if ( opts.sleep ) {
     cleanup();
     exit(0);
   }
