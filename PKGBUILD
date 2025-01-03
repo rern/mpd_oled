@@ -26,6 +26,8 @@ build() {
 }
 
 package() {
-	cd $srcdir/$pkgname-$pkgver
+	cd $srcdir
+	install -Dm 644 mpd_oled.default $pkgdir/etc/default/mpd_oled
+	install -Dm 644 mpd_oled.service -t $pkgdir/usr/lib/systemd/system
 	make DESTDIR="$pkgdir" install-strip
 }
