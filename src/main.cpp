@@ -103,7 +103,7 @@ public:
   int clock_format = 0;    // 0-3: 0,1 - 24h  2,3 - 12h  0,2 - leading 0
   int date_format = 0;     // 0: DD-MM-YYYY, 1: MM-DD-YYYY
   char pause_screen = 'p'; // p - play, s - stop
-  string cava_prog_name = "mpd_oled_cava"; // cava executable name
+//  string cava_prog_name = "mpd_oled_cava"; // cava executable name
   string cava_method = "fifo";             // fifo, alsa or pulse
   string cava_source;                      // Path to FIFO / alsa device
   double invert = 0;             // 0 normal, -1 invert, n>0 invert every n hrs
@@ -114,6 +114,7 @@ public:
   int spi_dc_gpio = OLED_SPI_DC; // SPI DC
   int spi_cs = OLED_SPI_CS0;     // SPI CS - 0: CS0, 1: CS1
   Player player;
+  string cava_prog_name = "cava";
   bool logo = false;
   bool sleep = false;
 
@@ -500,9 +501,8 @@ void draw_display(ArduiPi_OLED &display, const display_info &disp_info)
     draw_spect_display(display, disp_info);
 }
 
-void draw_logo(ArduiPi_OLED &display) //  draw_logo(display);
+void draw_logo(ArduiPi_OLED &display)
 {
-  // 40x40px logo
   uint8_t bitmap[] = {
     0xff, 0xff, 0xf1, 0xff, 0xff, 0xff, 0xff, 0xf0, 0x3f, 0xff, 0xff, 0xff, 0xf0, 0x1f, 0xff, 0xff, 
     0xff, 0xf0, 0x0f, 0xff, 0xff, 0xff, 0xf0, 0x07, 0xff, 0xff, 0xff, 0xf0, 0x03, 0xff, 0xff, 0xff, 
@@ -518,7 +518,7 @@ void draw_logo(ArduiPi_OLED &display) //  draw_logo(display);
     0xff, 0xf0, 0xff, 0x83, 0xff, 0xff, 0xf0, 0xff, 0xc1, 0xff, 0xff, 0xf0, 0xff, 0xe0, 0xff, 0xff, 
     0xf0, 0xff, 0xf0, 0xff, 0xff, 0xf0, 0xff, 0xf8
   };
-  display.drawBitmap(44, 12, bitmap, 40, 40, WHITE);
+  display.drawBitmap(44, 12, bitmap, 40, 40, WHITE); // 40x40px logo
 }
 
 namespace {
@@ -630,7 +630,8 @@ int start_idle_loop(ArduiPi_OLED &display, const OledOpts &opts)
       display.clearDisplay();
       pthread_mutex_lock(&disp_info_lock);
       display.invertDisplay(get_invert(opts.invert));
-      draw_display(display, disp_info);
+//      draw_display(display, disp_info);
+      draw_spectrum(display, 0, 0, 128, 64, disp_info.spect);
       pthread_mutex_unlock(&disp_info_lock);
       display.display();
     }
@@ -670,20 +671,21 @@ int main(int argc, char **argv)
     display.clearDisplay();
     draw_logo(display);
     display.display();
+    exit(0);
   }
-  else if ( opts.sleep )
+  
+  if ( opts.sleep )
   {
     cleanup();
+    exit(0);
   }
-  else
-  {
-    init_signals();
-    atexit(cleanup);
-    int loop_ret = start_idle_loop(display, opts);
+  
+  init_signals();
+  atexit(cleanup);
+  int loop_ret = start_idle_loop(display, opts);
 
-    if (loop_ret != 0)
-      exit(EXIT_FAILURE);
-  }
+  if (loop_ret != 0)
+    exit(EXIT_FAILURE);
 
   return 0;
 }
