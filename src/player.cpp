@@ -48,7 +48,9 @@ bool file_exists(const std::string &name)
 void Player::init_detect()
 {
   // Check for files associated with a player OS
-  if (file_exists("/var/www/command/moode.php"))
+  if (file_exists("/dev/shm/status"))
+    name = Player::Name::raudio;
+  else if (file_exists("/var/www/command/moode.php"))
     name = Player::Name::moode;
   else if (file_exists("/volumio"))
     name = Player::Name::volumio;
