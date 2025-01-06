@@ -37,7 +37,7 @@
 class Player {
 public:
   // name values here, names strings define in cpp file
-  enum Name { mpd, moode, volumio, runeaudio, unknown };
+  enum Name { raudio, mpd, moode, volumio, runeaudio, unknown };
   static std::vector<std::string> name_strs;
 
 private:
