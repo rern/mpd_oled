@@ -331,6 +331,56 @@ int mpd_info::init()
   int ret = (mpd_connection_get_error(conn) == MPD_ERROR_SUCCESS);
   mpd_connection_free(conn);
 
+  if (player.is(Player::Name::raudio)) {
+    state = MPD_STATE_UNKNOWN;
+    const char *STATUS_FILE = "/dev/shm/status";
+    FILE *file = fopen(STATUS_FILE, "r");
+    if (file != NULL) {
+      int line_sz = 256;
+      char line[line_sz];
+
+      char artist_name[line_sz] = {0};
+      char album_name[line_sz] = {0};
+      char title_name[line_sz] = {0};
+      char buff[line_sz];
+
+      bool has_title = false;
+      while (fgets(line, line_sz - 1, file)) {
+        if (sscanf(line, "Artist=\"%[^\"\n]", buff) == 1)
+          strcpy(artist_name, buff);
+        else if (sscanf(line, "Album=\"%[^\"\n]", buff) == 1)
+          strcpy(album_name, buff);
+        else if (sscanf(line, "Title=\"%[^\"\n]", buff) == 1) {
+          strcpy(title_name, buff);
+          has_title = true;
+        }
+        else if (sscanf(line, "state=\"%[^\"\n]", buff) == 1) {
+          if (strcmp(buff, "stop") == 0)
+            state = MPD_STATE_STOP;
+          else if (strcmp(buff, "play") == 0)
+            state = MPD_STATE_PLAY;
+          else if (strcmp(buff, "pause") == 0)
+            state = MPD_STATE_PAUSE;
+        }
+      }
+      fclose(file);
+
+      if(state != MPD_STATE_STOP) {
+        if (!has_title) {
+          init_vals();
+          state = MPD_STATE_PLAY;
+        }
+        else {
+          if (strcmp("Radio station", artist_name) == 0)
+            origin = to_ascii(album_name);
+          else
+            origin = to_ascii(artist_name);
+          title = to_ascii(title_name);
+        }
+      }
+    }
+  }
+  
   if (player.is(Player::Name::volumio)) {
     string volumio_status = get_volumio_status();
     Hjson::Value obj =
