@@ -115,9 +115,9 @@ public:
   int spi_cs = OLED_SPI_CS0;     // SPI CS - 0: CS0, 1: CS1
   Player player;
   string cava_prog_name = "cava";
-  bool allinfo = false;
   bool logo = false;
   bool sleep = false;
+  bool spectrum = false;
 
   OledOpts() : ProgramOpts("mpd_oled", "0.02")
   {
@@ -178,9 +178,11 @@ Options
   -D <gpio>  SPI DC GPIO number (default: 24)
   -S <num>   SPI CS number (default: 0)
   -p <plyr>  Player: mpd, moode, volumio, runeaudio (default: detected)
-  -A         display all info (default instaed of spectrum only)
-  -L         display rAudio logo
-  -X         sleep
+  
+  -X         show spectrum only
+  -x <type>  display:
+                clear  - clear display
+                logo   - display logo (rAudio only)
 Example :
 %s -o 6 use a %s OLED
 )",
@@ -196,7 +198,7 @@ void OledOpts::process_command_line(int argc, char **argv)
 
   handle_long_opts(argc, argv);
 
-  while ((c = getopt(argc, argv, ":ho:b:g:f:s:C:dP:kc:RI:a:B:r:D:S:p:ALX")) !=
+  while ((c = getopt(argc, argv, ":ho:b:g:f:s:C:dP:kc:RI:a:B:r:D:S:p:x:X")) !=
          -1) {
     if (common_opts(c, optopt))
       continue;
@@ -362,16 +364,15 @@ void OledOpts::process_command_line(int argc, char **argv)
       break;
     }
 
-    case 'A':
-      allinfo = true;
-      break;
-
-    case 'L':
-      logo = true;
-      break;
-
     case 'X':
-      sleep = true;
+        spectrum = true;
+      break;
+
+    case 'x':
+      if (strncmp(optarg, "logo", 4) == 0)
+        logo = true;
+      else if (strncmp(optarg, "sleep", 5) == 0)
+        sleep = true;
       break;
 
     default:
@@ -638,10 +639,10 @@ int start_idle_loop(ArduiPi_OLED &display, const OledOpts &opts)
       display.clearDisplay();
       pthread_mutex_lock(&disp_info_lock);
       display.invertDisplay(get_invert(opts.invert));
-      if (opts.allinfo)
-        draw_display(display, disp_info);
-      else
+      if (opts.spectrum)
         draw_spectrum(display, 0, 0, 128, 64, disp_info.spect);
+      else
+        draw_display(display, disp_info);
       
       pthread_mutex_unlock(&disp_info_lock);
       display.display();
