@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstring>
-
+#include <cstdint>
 
 namespace Hjson {
 
