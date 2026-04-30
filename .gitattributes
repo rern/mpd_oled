@@ -1,0 +1,53 @@
+### normalize line endings
+
+# auto detect text / binary
+* text=auto eol=lf
+
+# force as text
+*.adoc text eol=lf
+*.bat  text eol=crlf
+*.c    text eol=lf
+*.cmd  text eol=crlf
+*.css  text eol=lf
+*.cpp  text eol=lf
+*.go   text eol=lf
+*.h    text eol=lf
+*.html text eol=lf
+*.java text eol=lf
+*.js   text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+*.php  text eol=lf
+*.py   text eol=lf
+*.rb   text eol=lf
+*.sh   text eol=lf
+*.svg  text eol=lf
+*.ts   text eol=lf
+*.txt  text eol=lf
+*.yaml text eol=lf
+*.yml  text eol=lf
+
+# force as binary
+*.ai    binary
+*.bin   binary
+*.data  binary
+*.db    binary
+*.exe   binary
+*.gif   binary
+*.gz    binary
+*.ico   binary
+*.jpeg  binary
+*.jpg   binary
+*.mov   binary
+*.mp3   binary
+*.mp4   binary
+*.pdf   binary
+*.png   binary
+*.tar   binary
+*.ttf   binary
+*.wav   binary
+*.woff  binary
+*.woff2 binary
+*.xz    binary
+*.zip   binary
+*.zst   binary
