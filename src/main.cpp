@@ -181,8 +181,8 @@ Options
 
   -X         show spectrum only
   -x <type>  display:
-                clear  - clear display
-                logo   - display logo (rAudio only)
+                logo  - display logo (rAudio only)
+                sleep - clear display
 Example :
 %s -o 6 use a %s OLED
 )",
