@@ -56,6 +56,9 @@ const iconvpp::converter conv("ASCII//TRANSLIT", "UTF-8", true);
 static string to_ascii(string str)
 {
   string ascii;
+  if (str.empty()) {
+    return "";
+  }
   try {
     conv.convert(str, ascii);
   }
