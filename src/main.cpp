@@ -99,20 +99,19 @@ public:
   int framerate = 15;                  // frame rate in Hz
   int bars = 16;                       // number of bars in spectrum
   int gap = 1;                         // gap between bars, in pixels
-  vector<double> scroll;   // rate (pixels per sec), start delay (secs)
-  int clock_format = 0;    // 0-3: 0,1 - 24h  2,3 - 12h  0,2 - leading 0
-  int date_format = 0;     // 0: DD-MM-YYYY, 1: MM-DD-YYYY
-  char pause_screen = 'p'; // p - play, s - stop
-//  string cava_prog_name = "mpd_oled_cava"; // cava executable name
-  string cava_method = "fifo";             // fifo, alsa or pulse
-  string cava_source;                      // Path to FIFO / alsa device
-  double invert = 0;             // 0 normal, -1 invert, n>0 invert every n hrs
-  bool rotate180 = false;        // display upside down
-  unsigned char i2c_addr = 0;    // number of I2C address
-  int i2c_bus = 1;               // number of I2C bus
-  int reset_gpio = 25;           // reset pin
-  int spi_dc_gpio = OLED_SPI_DC; // SPI DC
-  int spi_cs = OLED_SPI_CS0;     // SPI CS - 0: CS0, 1: CS1
+  vector<double> scroll;               // rate (pixels per sec), start delay (secs)
+  int clock_format = 0;                // 0-3: 0,1 - 24h  2,3 - 12h  0,2 - leading 0
+  int date_format = 0;                 // 0: DD-MM-YYYY, 1: MM-DD-YYYY
+  char pause_screen = 'p';             // p - play, s - stop
+  string cava_method = "fifo";         // fifo, alsa or pulse
+  string cava_source;                  // Path to FIFO / alsa device
+  double invert = 0;                   // 0 normal, -1 invert, n>0 invert every n hrs
+  bool rotate180 = false;              // display upside down
+  unsigned char i2c_addr = 0;          // number of I2C address
+  int i2c_bus = 1;                     // number of I2C bus
+  int reset_gpio = 25;                 // reset pin
+  int spi_dc_gpio = OLED_SPI_DC;       // SPI DC
+  int spi_cs = OLED_SPI_CS0;           // SPI CS - 0: CS0, 1: CS1
   Player player;
   string cava_prog_name = "cava";
   bool logo = false;
@@ -152,42 +151,43 @@ Options
       fprintf(stdout, "      %1d %s\n", i, oled_type_str[i]);
 
   fprintf(stdout,
-          R"(  -b <num>   number of bars to display (default: 16)
-  -g <sz>    gap between bars in, pixels (default: 1)
+          R"(
+  -a <addr>  I2C address, in hex (default: default for OLED type)
+  -B num     I2C bus number (default: 1, giving device /dev/i2c-1)
+  -b <num>   number of bars to display (default: 16)
+  -C <fmt>   clock format: 0 - 24h leading 0 (default), 1 - 24h no leading 0,
+                2 - 24h leading 0, 3 - 24h no leading 0
+  -c         cava input method and source (default: '%s,%s')
+             e.g. 'fifo,/tmp/my_fifo', 'alsa,hw:5,0', 'pulse'
+  -D <gpio>  SPI DC GPIO number (default: 24)
+  -d         use USA date format MM-DD-YYYY (default: DD-MM-YYYY)
   -f <hz>    framerate in Hz (default: 15)
+  -g <sz>    gap between bars in, pixels (default: 1)
+  -I <val>   invert black/white: n - normal (default), i - invert,
+             number - switch between n and i with this period (hours), which
+             may help avoid screen burn
+  -k         cava executable name is cava (default: cava)
+  -P <val>   pause screen type: p - play (default), s - stop
+  -p <plyr>  Player: mpd, moode, volumio, runeaudio (default: detected)
+  -R         rotate display 180 degrees
+  -r <gpio>  I2C/SPI reset GPIO number, if needed (default: 25)
+  -S <num>   SPI CS number (default: 0)
   -s <vals>  scroll rate (pixels per second) and start delay (seconds), up
              to four comma separated decimal values (default: %.1f,%.1f) as:
                 rate_all
                 rate_all,delay_all
                 rate_title,delay_all,rate_artist
                 rate_title,delay_title,rate_artist,delay_artist
-  -C <fmt>   clock format: 0 - 24h leading 0 (default), 1 - 24h no leading 0,
-                2 - 24h leading 0, 3 - 24h no leading 0
-  -d         use USA date format MM-DD-YYYY (default: DD-MM-YYYY)
-  -P <val>   pause screen type: p - play (default), s - stop
-  -k         cava executable name is cava (default: cava)
-  -c         cava input method and source (default: '%s,%s')
-             e.g. 'fifo,/tmp/my_fifo', 'alsa,hw:5,0', 'pulse'
-  -R         rotate display 180 degrees
-  -I <val>   invert black/white: n - normal (default), i - invert,
-             number - switch between n and i with this period (hours), which
-             may help avoid screen burn
-  -a <addr>  I2C address, in hex (default: default for OLED type)
-  -B num     I2C bus number (default: 1, giving device /dev/i2c-1)
-  -r <gpio>  I2C/SPI reset GPIO number, if needed (default: 25)
-  -D <gpio>  SPI DC GPIO number (default: 24)
-  -S <num>   SPI CS number (default: 0)
-  -p <plyr>  Player: mpd, moode, volumio, runeaudio (default: detected)
 
   -X         show spectrum only
-  -x <type>  display:
-                logo  - display logo (rAudio only)
-                sleep - clear display
+  -x         display rAudio logo (rAudio only)
+  -z         clear display
 Example :
-%s -o 6 use a %s OLED
+%s -o 6 - use a %s OLED
 )",
-          DEF_SCROLL_RATE, DEF_SCROLL_DELAY, cava_method.c_str(),
-          cava_source.c_str(), get_program_name().c_str(), oled_type_str[6]);
+      cava_method.c_str(), cava_source.c_str(),
+      DEF_SCROLL_RATE, DEF_SCROLL_DELAY,
+      get_program_name().c_str(), oled_type_str[6]);
 }
 
 void OledOpts::process_command_line(int argc, char **argv)
@@ -198,17 +198,18 @@ void OledOpts::process_command_line(int argc, char **argv)
 
   handle_long_opts(argc, argv);
 
-  while ((c = getopt(argc, argv, ":ho:b:g:f:s:C:dP:kc:RI:a:B:r:D:S:p:x:X")) !=
-         -1) {
+  while ((c = getopt(argc, argv, ":ha:B:b:C:c:D:df:g:I:o:P:p:Rr:S:s:Xxz")) != -1)
+  {
     if (common_opts(c, optopt))
       continue;
 
-    switch (c) {
-    case 'o':
-      print_status_or_exit(read_int(optarg, &oled), c);
-      if (oled < 0 || oled >= OLED_LAST_OLED ||
-          !strstr(oled_type_str[oled], "128x64"))
-        error(msg_str("invalid 128x64 oled type %d (see -h)", oled), c);
+    switch (c)
+	{
+    case 'a':
+      if (strlen(optarg) != 2 || strspn(optarg, "01234567890aAbBcCdDeEfF") != 2)
+        error("I2C address should be two hexadecimal digits", c);
+
+      i2c_addr = (unsigned char)strtol(optarg, NULL, 16);
       break;
 
     case 'b':
@@ -217,63 +218,10 @@ void OledOpts::process_command_line(int argc, char **argv)
         error("select between 2 and 60 bars", c);
       break;
 
-    case 'g':
-      print_status_or_exit(read_int(optarg, &gap), c);
-      if (gap < 0 || gap > 30)
-        error("gap must be between 0 and 30 pixels", c);
-      break;
-
-    case 'f':
-      print_status_or_exit(read_int(optarg, &framerate), c);
-      if (framerate < 1)
-        error("framerate must be a positive integer", c);
-      break;
-
-    case 's':
-      print_status_or_exit(read_double_list(optarg, scroll, 4), c);
-      if (scroll.size() < 1)
-        scroll.push_back(DEF_SCROLL_RATE);
-      else if (scroll[0] < 0)
-        error("scroll rate cannot be negative", c);
-
-      if (scroll.size() < 2)
-        scroll.push_back(DEF_SCROLL_DELAY);
-      else if (scroll[1] < 0)
-        error("scroll delay cannot be negative", c);
-
-      if (scroll.size() < 3)
-        scroll.push_back(scroll[0]);
-      else if (scroll[2] < 0)
-        error("scroll rate (origin/artist) cannot be negative", c);
-
-      if (scroll.size() < 4)
-        scroll.push_back(scroll[1]);
-      else if (scroll[3] < 0)
-        error("scroll delay (origin/artist) cannot be negative", c);
-
-      break;
-
     case 'C':
       print_status_or_exit(read_int(optarg, &clock_format), c);
       if (clock_format < 0 || clock_format > 3)
         error("clock format number is not 0, 1, 2 or 3", c);
-      break;
-
-    case 'd':
-      date_format = 1;
-      break;
-
-    case 'P':
-      if (strcmp(optarg, "p") == 0)
-        pause_screen = 'p';
-      else if (strcmp(optarg, "s") == 0)
-        pause_screen = 's';
-      else
-        error("pause screen type is not p or s", c);
-      break;
-
-    case 'k':
-      cava_prog_name = "cava";
       break;
 
     case 'c':
@@ -302,8 +250,28 @@ void OledOpts::process_command_line(int argc, char **argv)
       cava_source = &optarg[method_len];
       break;
 
-    case 'R':
-      rotate180 = true;
+    case 'D':
+      print_status_or_exit(read_int(optarg, &spi_dc_gpio), c);
+      if (!isdigit(optarg[0]) || reset_gpio < 0 || reset_gpio > 99)
+        error("probably invalid (not integer in range 0 - 99), specify the\n"
+              "GPIO number of the pin that SPI DC is connected to",
+              c);
+      break;
+
+    case 'd':
+      date_format = 1;
+      break;
+
+    case 'f':
+      print_status_or_exit(read_int(optarg, &framerate), c);
+      if (framerate < 1)
+        error("framerate must be a positive integer", c);
+      break;
+
+    case 'g':
+      print_status_or_exit(read_int(optarg, &gap), c);
+      if (gap < 0 || gap > 30)
+        error("gap must be between 0 and 30 pixels", c);
       break;
 
     case 'I':
@@ -319,39 +287,24 @@ void OledOpts::process_command_line(int argc, char **argv)
         error("invalid value, should be n, i or a positive number", c);
       break;
 
-    case 'a':
-      if (strlen(optarg) != 2 || strspn(optarg, "01234567890aAbBcCdDeEfF") != 2)
-        error("I2C address should be two hexadecimal digits", c);
-
-      i2c_addr = (unsigned char)strtol(optarg, NULL, 16);
+    case 'k':
+      cava_prog_name = "cava";
       break;
 
-    case 'B':
-      print_status_or_exit(read_int(optarg, &i2c_bus), c);
-      if (i2c_bus < 0)
-        error("bus number cannot be negative", c);
+    case 'o':
+      print_status_or_exit(read_int(optarg, &oled), c);
+      if (oled < 0 || oled >= OLED_LAST_OLED ||
+          !strstr(oled_type_str[oled], "128x64"))
+        error(msg_str("invalid 128x64 oled type %d (see -h)", oled), c);
       break;
 
-    case 'r':
-      print_status_or_exit(read_int(optarg, &reset_gpio), c);
-      if (!isdigit(optarg[0]) || reset_gpio < 0 || reset_gpio > 99)
-        error("probably invalid (not integer in range 0 - 99), specify the\n"
-              "GPIO number of the pin that RST is connected to",
-              c);
-      break;
-
-    case 'D':
-      print_status_or_exit(read_int(optarg, &spi_dc_gpio), c);
-      if (!isdigit(optarg[0]) || reset_gpio < 0 || reset_gpio > 99)
-        error("probably invalid (not integer in range 0 - 99), specify the\n"
-              "GPIO number of the pin that SPI DC is connected to",
-              c);
-      break;
-
-    case 'S':
-      print_status_or_exit(read_int(optarg, &spi_cs), c);
-      if (spi_cs < 0 || spi_cs > 1)
-        error("SPI CS should be 0 or 1", c);
+    case 'P':
+      if (strcmp(optarg, "p") == 0)
+        pause_screen = 'p';
+      else if (strcmp(optarg, "s") == 0)
+        pause_screen = 's';
+      else
+        error("pause screen type is not p or s", c);
       break;
 
     case 'p': {
@@ -363,16 +316,58 @@ void OledOpts::process_command_line(int argc, char **argv)
       player.set_name(arg_id);
       break;
     }
+    case 'R':
+      rotate180 = true;
+      break;
+
+    case 'r':
+      print_status_or_exit(read_int(optarg, &reset_gpio), c);
+      if (!isdigit(optarg[0]) || reset_gpio < 0 || reset_gpio > 99)
+        error("probably invalid (not integer in range 0 - 99), specify the\n"
+              "GPIO number of the pin that RST is connected to",
+              c);
+      break;
+
+    case 'S':
+      print_status_or_exit(read_int(optarg, &spi_cs), c);
+      if (spi_cs < 0 || spi_cs > 1)
+        error("SPI CS should be 0 or 1", c);
+      break;
+
+    case 's':
+      print_status_or_exit(read_double_list(optarg, scroll, 4), c);
+      if (scroll.size() < 1)
+        scroll.push_back(DEF_SCROLL_RATE);
+      else if (scroll[0] < 0)
+        error("scroll rate cannot be negative", c);
+
+      if (scroll.size() < 2)
+        scroll.push_back(DEF_SCROLL_DELAY);
+      else if (scroll[1] < 0)
+        error("scroll delay cannot be negative", c);
+
+      if (scroll.size() < 3)
+        scroll.push_back(scroll[0]);
+      else if (scroll[2] < 0)
+        error("scroll rate (origin/artist) cannot be negative", c);
+
+      if (scroll.size() < 4)
+        scroll.push_back(scroll[1]);
+      else if (scroll[3] < 0)
+        error("scroll delay (origin/artist) cannot be negative", c);
+
+      break;
 
     case 'X':
         spectrum = true;
       break;
 
     case 'x':
-      if (strncmp(optarg, "logo", 4) == 0)
-        logo = true;
-      else if (strncmp(optarg, "sleep", 5) == 0)
-        sleep = true;
+      logo = true;
+      break;
+
+    case 'z':
+      sleep = true;
       break;
 
     default:
