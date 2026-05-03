@@ -134,24 +134,21 @@ public:
 
 void OledOpts::usage()
 {
+  string oled_type = "";
+  char buf[128];
+  for (int i = 0; i < OLED_LAST_OLED; i++) {
+    if (strstr(oled_type_str[i], "128x64")) {
+      snprintf(buf, sizeof(buf), "%*s%d - %s\n", 16, "", i, oled_type_str[i]);
+      oled_type += buf;
+    }
+  }
+  oled_type.pop_back();
   fprintf(stdout, R"(
-Usage: %s -o oled_type [options] [input_file]
+Usage: mpd_oled -o <type> [options] [input_file]
 
 Display information about an MPD-based player on an OLED screen
 
 Options
-%s)",
-          get_program_name().c_str(), help_ver_text);
-
-  fprintf(
-      stdout,
-      "  -o <type>  OLED type, specified as a number, from the following:\n");
-  for (int i = 0; i < OLED_LAST_OLED; i++)
-    if (strstr(oled_type_str[i], "128x64"))
-      fprintf(stdout, "      %1d %s\n", i, oled_type_str[i]);
-
-  fprintf(stdout,
-          R"(
   -a <addr>  I2C address, in hex (default: default for OLED type)
   -B num     I2C bus number (default: 1, giving device /dev/i2c-1)
   -b <num>   number of bars to display (default: 16)
@@ -163,10 +160,12 @@ Options
   -d         use USA date format MM-DD-YYYY (default: DD-MM-YYYY)
   -f <hz>    framerate in Hz (default: 15)
   -g <sz>    gap between bars in, pixels (default: 1)
+  -h --help  this info
   -I <val>   invert black/white: n - normal (default), i - invert,
              number - switch between n and i with this period (hours), which
              may help avoid screen burn
-  -k         cava executable name is cava (default: cava)
+  -o <type>  OLED type, specified as a number, from the following:
+%s
   -P <val>   pause screen type: p - play (default), s - stop
   -p <plyr>  Player: mpd, moode, volumio, runeaudio (default: detected)
   -R         rotate display 180 degrees
@@ -178,16 +177,17 @@ Options
                 rate_all,delay_all
                 rate_title,delay_all,rate_artist
                 rate_title,delay_title,rate_artist,delay_artist
-
+  --version  version info
   -X         show spectrum only
   -x         display rAudio logo (rAudio only)
   -z         clear display
 Example :
 %s -o 6 - use a %s OLED
 )",
-      cava_method.c_str(), cava_source.c_str(),
-      DEF_SCROLL_RATE, DEF_SCROLL_DELAY,
-      get_program_name().c_str(), oled_type_str[6]);
+    cava_method.c_str(), cava_source.c_str(),
+    oled_type.c_str(),
+    DEF_SCROLL_RATE, DEF_SCROLL_DELAY,
+    get_program_name().c_str(), oled_type_str[6]);
 }
 
 void OledOpts::process_command_line(int argc, char **argv)
