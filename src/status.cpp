@@ -148,14 +148,6 @@ bool connection_info::init()
   return (type != TYPE_UNKNOWN);
 }
 
-/// Get Volumio status file as string
-string get_volumio_status()
-{
-  char url[] = "http://localhost:3000/api/v1/getstate";
-  HttpRequest req;
-  return (req.set_url(url) == 0) ? req.get() : string();
-}
-
 /// Get kilobit rate of song from MPD
 int get_mpd_kbitrate(struct mpd_connection *conn)
 {
@@ -174,51 +166,6 @@ int get_mpd_kbitrate(struct mpd_connection *conn)
 
   mpd_response_finish(conn);
   return kbitrate;
-}
-
-void mpd_info::set_vals_volumio(struct mpd_connection *conn)
-{
-  string volumio_status = get_volumio_status();
-  Hjson::Value obj =
-      Hjson::Unmarshal(volumio_status.c_str(), volumio_status.size());
-
-  if (obj) {
-    volume = (obj["volume"].type() == Hjson::Value::Type::DOUBLE)
-                 ? static_cast<int>(obj["volume"])
-                 : 0;
-
-    string stat = obj["status"].to_string();
-    if (stat == "play")
-      state = MPD_STATE_PLAY;
-    else if (stat == "pause")
-      state = MPD_STATE_PAUSE;
-    else if (stat == "stop")
-      state = MPD_STATE_STOP;
-    else
-      state = MPD_STATE_UNKNOWN;
-
-    int seek = (obj["seek"].type() == Hjson::Value::Type::DOUBLE)
-                   ? static_cast<int>(obj["seek"])
-                   : 0;
-    song_elapsed_secs = seek / 1000;
-
-    int duration = (obj["duration"].type() == Hjson::Value::Type::DOUBLE)
-                       ? static_cast<int>(obj["duration"])
-                       : 0;
-    song_total_secs = duration;
-
-    title = (obj["title"].type() == Hjson::Value::Type::STRING)
-                ? to_ascii(obj["title"])
-                : string();
-    origin = (obj["artist"].type() == Hjson::Value::Type::STRING)
-                 ? to_ascii(obj["artist"])
-                 : string();
-  }
-  else {
-    init_vals();
-  }
-
-  kbitrate = get_mpd_kbitrate(conn);
 }
 
 static string get_tag(const struct mpd_song *song, enum mpd_tag_type type)
@@ -249,10 +196,7 @@ void mpd_info::init_vals()
 
 void mpd_info::set_vals(struct mpd_connection *conn)
 {
-  if (player.is(Player::Name::volumio))
-    set_vals_volumio(conn);
-  else
-    set_vals_mpd(conn);
+  set_vals_mpd(conn);
 }
 
 void mpd_info::set_vals_mpd(struct mpd_connection *conn)
@@ -268,14 +212,11 @@ void mpd_info::set_vals_mpd(struct mpd_connection *conn)
     return;
   }
 
-  // Volumio volume is not MPD volume
-  if (!player.is(Player::Name::volumio)) {
-    volume = mpd_status_get_volume(status);
-    if (mpd_status_get_error(status) != NULL) {
-      mpd_status_free(status);
-      mpd_response_finish(conn);
-      return;
-    }
+  volume = mpd_status_get_volume(status);
+  if (mpd_status_get_error(status) != NULL) {
+    mpd_status_free(status);
+    mpd_response_finish(conn);
+    return;
   }
 
   state = mpd_status_get_state(status);
@@ -334,126 +275,44 @@ int mpd_info::init()
   int ret = (mpd_connection_get_error(conn) == MPD_ERROR_SUCCESS);
   mpd_connection_free(conn);
 
-  if (player.is(Player::Name::raudio)) {
-    state = MPD_STATE_UNKNOWN;
-    const char *STATUS_FILE = "/dev/shm/status";
-    FILE *file = fopen(STATUS_FILE, "r");
-    if (file != NULL) {
-      int line_sz = 256;
-      char line[line_sz];
+  state = MPD_STATE_UNKNOWN;
+  const char *STATUS_FILE = "/dev/shm/status";
+  FILE *file = fopen(STATUS_FILE, "r");
+  if (file != NULL) {
+    int line_sz = 256;
+    char line[line_sz];
 
-      char file_name[line_sz] = {0};
-      char artist_name[line_sz] = {0};
-      char album_name[line_sz] = {0};
-      char title_name[line_sz] = {0};
-      char buff[line_sz];
+    char file_name[line_sz] = {0};
+    char artist_name[line_sz] = {0};
+    char album_name[line_sz] = {0};
+    char title_name[line_sz] = {0};
+    char buff[line_sz];
 
-      while (fgets(line, line_sz - 1, file)) {
-        if (sscanf(line, "file=\"%[^\"\n]", buff) == 1)
-          strcpy(file_name, buff);
-        else if (sscanf(line, "Artist=\"%[^\"\n]", buff) == 1)
-          strcpy(artist_name, buff);
-        else if (sscanf(line, "Album=\"%[^\"\n]", buff) == 1)
-          strcpy(album_name, buff);
-        else if (sscanf(line, "Title=\"%[^\"\n]", buff) == 1)
-          strcpy(title_name, buff);
-        else if (sscanf(line, "state=\"%[^\"\n]", buff) == 1) {
-          if (strcmp(buff, "stop") == 0)
-            state = MPD_STATE_STOP;
-          else if (strcmp(buff, "play") == 0)
-            state = MPD_STATE_PLAY;
-          else if (strcmp(buff, "pause") == 0)
-            state = MPD_STATE_PAUSE;
-        }
-        else if (sscanf(line, "volume=%[^\n]", buff) == 1) {
-          volume =  std::__cxx11::stoi(buff);
-        }
-      }
-      fclose(file);
-
-      origin = to_ascii(artist_name);
-      title = to_ascii(title_name);
-    }
-  }
-
-  if (player.is(Player::Name::volumio)) {
-    string volumio_status = get_volumio_status();
-    Hjson::Value obj =
-        Hjson::Unmarshal(volumio_status.c_str(), volumio_status.size());
-
-    if (obj) {
-      volume = (obj["volume"].type() == Hjson::Value::Type::DOUBLE)
-                   ? static_cast<int>(obj["volume"])
-                   : 0;
-    }
-    else {
-      volume = 0;
-    }
-  }
-
-  // On Moode, rather than MPD an alternative renderer may be playing audio.
-  // If this is the case, detailed song information will not be available,
-  // so determine and display the renderer name instead.
-  // Also, use for origin and title
-  if (player.is(Player::Name::moode)) {
-    state = MPD_STATE_UNKNOWN; // ignore MPD state
-    const char *MOODE_CURRENT_SONG_FILE = "/var/local/www/currentsong.txt";
-    FILE *file = fopen(MOODE_CURRENT_SONG_FILE, "r");
-    if (file != NULL) {
-      int line_sz = 256; // lines of interest will be shorter than this
-      char line[line_sz];
-
-      char file_name[line_sz] = {0};
-      char artist_name[line_sz] = {0};
-      char album_name[line_sz] = {0};
-      char title_name[line_sz] = {0};
-      char buff[line_sz];
-
-      bool has_title = false;
-      bool is_empty = true;
-      while (fgets(line, line_sz - 1, file)) {
-	is_empty = false;
-        if (sscanf(line, "file=%[^\n]", buff) == 1)
-          strcpy(file_name, buff);
-        else if (sscanf(line, "artist=%[^\n]", buff) == 1)
-          strcpy(artist_name, buff);
-        else if (sscanf(line, "album=%[^\n]", buff) == 1)
-          strcpy(album_name, buff);
-        else if (sscanf(line, "title=%[^\n]", buff) == 1) {
-          strcpy(title_name, buff);
-          has_title = true;
-        }
-        else if (sscanf(line, "artist=%[^\n]", buff) == 1)
-          strcpy(artist_name, buff);
-        else if (sscanf(line, "state=%[^\n]", buff) == 1) {
-          if (strcmp(buff, "stop") == 0)
-            state = MPD_STATE_STOP;
-	  else if (strcmp(buff, "play") == 0)
-            state = MPD_STATE_PLAY;
-	  else if (strcmp(buff, "pause") == 0)
-            state = MPD_STATE_PAUSE;
-        }
-      }
-      fclose(file);
-
-      if(is_empty)
-        state = MPD_STATE_STOP;
-
-      if(state != MPD_STATE_STOP) {
-        if (!has_title) { // assume this is a renderer
-          init_vals();
-          origin = file_name; // display the renderer as the song origin
+    while (fgets(line, line_sz - 1, file)) {
+      if (sscanf(line, "file=\"%[^\"\n]", buff) == 1)
+        strcpy(file_name, buff);
+      else if (sscanf(line, "Artist=\"%[^\"\n]", buff) == 1)
+        strcpy(artist_name, buff);
+      else if (sscanf(line, "Album=\"%[^\"\n]", buff) == 1)
+        strcpy(album_name, buff);
+      else if (sscanf(line, "Title=\"%[^\"\n]", buff) == 1)
+        strcpy(title_name, buff);
+      else if (sscanf(line, "state=\"%[^\"\n]", buff) == 1) {
+        if (strcmp(buff, "stop") == 0)
+          state = MPD_STATE_STOP;
+        else if (strcmp(buff, "play") == 0)
           state = MPD_STATE_PLAY;
-        }
-        else {
-          if (strcmp("Radio station", artist_name) == 0)
-            origin = to_ascii(album_name);
-          else
-            origin = to_ascii(artist_name);
-          title = to_ascii(title_name);
-        }
+        else if (strcmp(buff, "pause") == 0)
+          state = MPD_STATE_PAUSE;
+      }
+      else if (sscanf(line, "volume=%[^\n]", buff) == 1) {
+        volume =  std::__cxx11::stoi(buff);
       }
     }
+    fclose(file);
+
+    origin = to_ascii(artist_name);
+    title = to_ascii(title_name);
   }
 
   return ret;

@@ -46,6 +46,8 @@
 using std::string;
 using std::vector;
 
+const string VERSION = "0.02.1";
+const string PROG_NAME = "mpd_oled";
 const int SPECT_WIDTH = 64;
 
 ArduiPi_OLED display; // global, for use during signal handling
@@ -118,7 +120,7 @@ public:
   bool sleep = false;
   bool spectrum = false;
 
-  OledOpts() : ProgramOpts("mpd_oled", "0.02")
+  OledOpts() : ProgramOpts(PROG_NAME, VERSION)
   {
     cava_source = "/tmp/" + get_program_name() + "_fifo";
     scroll.push_back(DEF_SCROLL_RATE);
@@ -167,7 +169,6 @@ Options
   -o <type>  OLED type, specified as a number, from the following:
 %s
   -P <val>   pause screen type: p - play (default), s - stop
-  -p <plyr>  Player: mpd, moode, volumio, runeaudio (default: detected)
   -R         rotate display 180 degrees
   -r <gpio>  I2C/SPI reset GPIO number, if needed (default: 25)
   -S <num>   SPI CS number (default: 0)
@@ -177,7 +178,7 @@ Options
                 rate_all,delay_all
                 rate_title,delay_all,rate_artist
                 rate_title,delay_title,rate_artist,delay_artist
-  --version  version info
+  -v         version
   -X         show spectrum only
   -x         display rAudio logo (rAudio only)
   -z         clear display
@@ -198,7 +199,7 @@ void OledOpts::process_command_line(int argc, char **argv)
 
   handle_long_opts(argc, argv);
 
-  while ((c = getopt(argc, argv, ":ha:B:b:C:c:D:df:g:I:o:P:p:Rr:S:s:Xxz")) != -1)
+  while ((c = getopt(argc, argv, ":ha:B:b:C:c:D:df:g:I:o:P:p:Rr:S:s:vXxz")) != -1)
   {
     if (common_opts(c, optopt))
       continue;
@@ -307,15 +308,6 @@ void OledOpts::process_command_line(int argc, char **argv)
         error("pause screen type is not p or s", c);
       break;
 
-    case 'p': {
-      // const char *params = "mpd|moode|volumio|runeaudio\n";
-      string params = Player::all_names("|");
-      string arg_id;
-      if (!get_arg_id(optarg, &arg_id, params.c_str()))
-        error(msg_str("unknown player name '%s'", optarg).c_str(), c);
-      player.set_name(arg_id);
-      break;
-    }
     case 'R':
       rotate180 = true;
       break;
@@ -358,8 +350,13 @@ void OledOpts::process_command_line(int argc, char **argv)
 
       break;
 
+    case 'v':
+      fprintf(stdout, (PROG_NAME + " " + VERSION + "\n").c_str());
+	  exit(0);
+      break;
+
     case 'X':
-        spectrum = true;
+      spectrum = true;
       break;
 
     case 'x':
@@ -401,23 +398,28 @@ string print_config_file(int bars, int framerate, string cava_method,
   if (ofile == NULL)
     return ""; // failed to open file and convert to file stream
 
-  fprintf(ofile,
-          "[general]\n"
-          "framerate = %d\n"
-          "bars = %d\n"
-          "\n"
-          "[input]\n"
-          "method = %s\n"
-          "source = %s\n"
-          "\n"
-          "[output]\n"
-          "method = raw\n"
-          "data_format = binary\n"
-          "channels = mono\n"
-          "raw_target = %s\n"
-          "bit_format = 8bit\n",
-          framerate, bars, cava_method.c_str(), cava_source.c_str(),
-          fifo_path_cava_out.c_str());
+  fprintf(ofile, R"(
+[general]
+framerate = %d
+bars = %d
+
+[input]
+method = %s
+source = %s
+
+[output]
+method = raw
+data_format = binary
+channels = mono
+raw_target = %s
+bit_format = 8bit
+)",
+    framerate,
+	bars,
+	cava_method.c_str(),
+	cava_source.c_str(),
+    fifo_path_cava_out.c_str()
+  );
   fclose(ofile);
   return templt;
 }
@@ -646,9 +648,6 @@ int start_idle_loop(ArduiPi_OLED &display, const OledOpts &opts)
     if (timer.finished()) {
       display.reset_offset();
       if (disp_info.status.get_state() == MPD_STATE_PLAY && fifo_fd < 0) {
-	// delay cava start by 2 seconds (for Moode)
-	// https://github.com/antiprism/mpd_oled/issues/67
-        usleep(2 * 1000000);
         opts.print_status_or_exit(start_cava(&fifo_file, opts));
         fifo_fd = fileno(fifo_file);
       }
