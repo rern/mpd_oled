@@ -96,23 +96,23 @@ class OledOpts : public ProgramOpts {
 public:                                 // ### default:
   const double DEF_SCROLL_RATE = 8;     // pixels per second
   const double DEF_SCROLL_DELAY = 5;    // second delay before scrolling
-  int bars = 16;                        // number of bars in spectrum
-  string cava_method = "fifo";          // fifo, alsa or pulse
+  int bars = 16;
+  string cava_method = "fifo";
   string cava_prog_name = "cava";
-  string cava_source = "/tmp/mpd.fifo"; // path to fifo / alsa device
-  int clock_format = 0;                 // 0-3: 0,1 - 24h  2,3 - 12h  0,2 - leading 0
-  int date_format = 0;                  // 0: DD-MM-YYYY, 1: MM-DD-YYYY
-  int framerate = 25;                   // frame rate in Hz
-  int gap = 1;                          // gap between bars, in pixels
-  unsigned char i2c_addr = 0;           // number of I2C address
-  int i2c_bus = 1;                      // number of I2C bus
-  double invert = 0;                    // 0 normal, -1 invert, n>0 invert every n hrs
+  string cava_source = "/tmp/mpd.fifo";
+  int clock_format = 0;
+  int date_format = 0;
+  int framerate = 25;
+  int gap = 1;
+  unsigned char i2c_addr = 0;
+  int i2c_bus = 1;
+  double invert = 0;
   bool logo = false;
-  int oled = 6;                         // oled type
-  vector<double> scroll;                // rate (pixels per sec), start delay (secs)
-  char pause_screen = 'p';              // p - play, s - stop
-  int reset_gpio = 25;                  // reset pin
-  bool rotate180 = false;               // display upside down
+  int oled = 6;
+  vector<double> scroll;
+  char pause_screen = 'p';
+  int reset_gpio = 25;
+  bool rotate180 = false;
   bool sleep = false;
   bool spectrum = true;
   int spi_dc_gpio = OLED_SPI_DC;        // SPI DC
@@ -152,36 +152,36 @@ Options
   -C <fmt>   clock format:                (default: 0)
                 0 - 24h leading 0
                 1 - 24h no leading 0
-                2 - 24h leading 0
-                3 - 24h no leading 0
+                2 - 12h leading 0
+                3 - 12h no leading 0
   -c         cava input method and source (default: %s,%s)
                 e.g. fifo,/tmp/my_fifo, alsa,hw:5,0, pulse
   -D <gpio>  SPI DC GPIO number           (default: 24)
   -d         use USA format MM-DD-YYYY    (default: DD-MM-YYYY)
-  -f <hz>    framerate in Hz              (default: 15)
-  -g <sz>    gap between bars in, pixels  (default: 1)
+  -f <hz>    framerate (Hz)               (default: 15)
+  -g <sz>    gap between bars (pixel)     (default: 1)
   -h --help  this info
   -I <val>   invert black/white:          (default: n)
-                n   - normal
-                i   - invert
-                <h> - switch between n and i with this period (hours),
+                n - normal
+                i - invert
+                h - switch between n and i with this period (hour),
                       which may help avoid screen burn
   -o <type>  OLED type:                   (default: 6)
 %s
-  -P <val>   pause screen type:
-                p - play (default)
-				s - stop
+  -P <val>   pause screen type:           (default: p)
+                p - play
+                s - stop
   -R         rotate display 180 degrees
-  -r <gpio>  I2C/SPI reset GPIO number   (default: 25)
-  -S <num>   SPI CS number               (default: 0)
-  -s <vals>  scroll rate and start delay (default: %.1f,%.1f)
+  -r <gpio>  I2C/SPI reset GPIO number    (default: 25)
+  -S <num>   SPI CS number                (default: 0)
+  -s <vals>  scroll rate and start delay  (default: %.1f,%.1f)
              up to four comma separated decimal values:
                 rate_all
                 rate_all,delay_all
                 rate_title,delay_all,rate_artist
                 rate_title,delay_title,rate_artist,delay_artist
   -v         version
-  -X         display all data            (default: spectrum only)
+  -X         display all data             (default: spectrum only)
   -x         display rAudio logo
   -z         clear display
 
@@ -208,7 +208,7 @@ void OledOpts::process_command_line(int argc, char **argv)
       continue;
 
     switch (c)
-	{
+    {
     case 'a':
       if (strlen(optarg) != 2 || strspn(optarg, "01234567890aAbBcCdDeEfF") != 2)
         error("I2C address should be two hexadecimal digits", c);
@@ -350,12 +350,11 @@ void OledOpts::process_command_line(int argc, char **argv)
         scroll.push_back(scroll[1]);
       else if (scroll[3] < 0)
         error("scroll delay (origin/artist) cannot be negative", c);
-
       break;
 
     case 'v':
       fprintf(stdout, (PROG_NAME + " " + VERSION + "\n").c_str());
-	  exit(0);
+      exit(0);
       break;
 
     case 'X':
@@ -418,9 +417,9 @@ raw_target = %s
 bit_format = 8bit
 )",
     framerate,
-	bars,
-	cava_method.c_str(),
-	cava_source.c_str(),
+    bars,
+    cava_method.c_str(),
+    cava_source.c_str(),
     fifo_path_cava_out.c_str()
   );
   fclose(ofile);
