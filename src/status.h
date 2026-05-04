@@ -22,7 +22,6 @@
   IN THE SOFTWARE.
 */
 
-#include "player.h"
 #include "timer.h"
 
 #include <mpd/client.h>
@@ -30,7 +29,6 @@
 
 class mpd_info {
 private:
-  Player player;
   int volume;
   std::string origin;
   std::string title;
@@ -50,7 +48,6 @@ public:
 
   mpd_info(); // Constructor
   int init(); // Initialise with current status values
-  void set_player(Player plyr) { player = plyr; }
   void print_vals() const;
 
   int get_volume() const;         // Volume: 0 - 100
