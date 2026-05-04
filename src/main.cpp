@@ -24,7 +24,6 @@
 
 #include "display.h"
 #include "display_info.h"
-#include "player.h"
 #include "programopts.h"
 #include "timer.h"
 #include "utils.h"
@@ -46,7 +45,7 @@
 using std::string;
 using std::vector;
 
-const string VERSION = "0.02.1";
+const string VERSION = "0.02.2";
 const string PROG_NAME = "mpd_oled";
 const int SPECT_WIDTH = 64;
 
@@ -114,7 +113,6 @@ public:
   int reset_gpio = 25;                 // reset pin
   int spi_dc_gpio = OLED_SPI_DC;       // SPI DC
   int spi_cs = OLED_SPI_CS0;           // SPI CS - 0: CS0, 1: CS1
-  Player player;
   string cava_prog_name = "cava";
   bool logo = false;
   bool sleep = false;
@@ -127,8 +125,6 @@ public:
     scroll.push_back(DEF_SCROLL_DELAY);
     scroll.push_back(DEF_SCROLL_RATE);
     scroll.push_back(DEF_SCROLL_DELAY);
-
-    player.init_detect();
   }
   void process_command_line(int argc, char **argv);
   void usage();
@@ -199,7 +195,7 @@ void OledOpts::process_command_line(int argc, char **argv)
 
   handle_long_opts(argc, argv);
 
-  while ((c = getopt(argc, argv, ":ha:B:b:C:c:D:df:g:I:o:P:p:Rr:S:s:vXxz")) != -1)
+  while ((c = getopt(argc, argv, ":ha:B:b:C:c:D:df:g:I:o:P:Rr:S:s:vXxz")) != -1)
   {
     if (common_opts(c, optopt))
       continue;
@@ -570,7 +566,6 @@ int start_idle_loop(ArduiPi_OLED &display, const OledOpts &opts)
   disp_info.date_format = opts.date_format;
   disp_info.pause_screen = opts.pause_screen;
   disp_info.spect.init(opts.bars, opts.gap);
-  disp_info.status.set_player(opts.player);
   disp_info.status.init();
 
   // Update MPD info in separate thread to avoid stuttering in the spectrum
