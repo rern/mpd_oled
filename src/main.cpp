@@ -60,16 +60,10 @@ void cleanup(void)
   display.close();
 }
 
-void signal_handler(int sig)
+void signal_handler(int /*sig*/)
 {
-  switch (sig) {
-  case SIGINT:
-  case SIGHUP:
-  case SIGTERM:
-    cleanup();
-    break;
-  }
-  abort();
+  cleanup();
+  _exit(0);
 }
 
 void init_signals(void)
