@@ -180,12 +180,12 @@ Options
   -z         clear display
 
 Example :
-%s -o 6 - use a %s OLED
+%s -o 3 - use a %s OLED
 )",
     cava_method.c_str(), cava_source.c_str(),
     oled_type.c_str(),
     DEF_SCROLL_RATE, DEF_SCROLL_DELAY,
-    get_program_name().c_str(), oled_type_str[6]);
+    get_program_name().c_str(), oled_type_str[3]);
 }
 
 void OledOpts::process_command_line(int argc, char **argv)
