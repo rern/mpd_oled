@@ -1,5 +1,6 @@
 /*
    Copyright (c) 2018, Adrian Rossiter
+   Modified 2026
 
    Antiprism - http://www.antiprism.com
 
@@ -13,13 +14,13 @@
       The above copyright notice and this permission notice shall be included
       in all copies or substantial portions of the Software.
 
-  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
-  IN THE SOFTWARE.
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+   IN THE SOFTWARE.
 */
 
 #include "display.h"
@@ -34,8 +35,10 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <math.h>
@@ -45,19 +48,80 @@
 using std::string;
 using std::vector;
 
-const string VERSION = "0.02.2";
+const string VERSION = "0.03";
 const string PROG_NAME = "mpd_oled";
 const int SPECT_WIDTH = 64;
 
-ArduiPi_OLED display; // global, for use during signal handling
+struct CavaContext {
+  pid_t pid = -1;
+  FILE *fifo_file = nullptr;
+  string fifo_path = "";
+  string config_path = "";
+};
+
+// --- Global Variables ---
+ArduiPi_OLED display;
+CavaContext g_cava;
+ArduiPi_OLED* g_display_ptr = nullptr;
+
+namespace {
+pthread_mutex_t disp_info_lock;
+}
+
+// Systematically tear down running CAVA instances and clean filesystem allocations
+void stop_cava(CavaContext &ctx)
+{
+  if (ctx.pid > 0) {
+    // 1. Send SIGTERM first for graceful cleanup
+    kill(ctx.pid, SIGTERM);
+
+    // 2. Poll for up to 100ms to see if it closes gracefully
+    int status;
+    int retry = 10;
+    pid_t res = 0;
+    while (retry > 0) {
+      res = waitpid(ctx.pid, &status, WNOHANG);
+      if (res > 0) {
+        break; // Child exited cleanly
+      }
+      usleep(10000); // Wait 10ms
+      retry--;
+    }
+
+    // 3. Force kill if CAVA ignores SIGTERM or gets stuck in audio callbacks
+    if (res <= 0) {
+      kill(ctx.pid, SIGKILL);
+      waitpid(ctx.pid, &status, 0); // Clean up the zombie process entry
+    }
+    ctx.pid = -1;
+  }
+
+  if (ctx.fifo_file != nullptr) {
+    fclose(ctx.fifo_file);
+    ctx.fifo_file = nullptr;
+  }
+
+  if (!ctx.fifo_path.empty()) {
+    unlink(ctx.fifo_path.c_str());
+    ctx.fifo_path = "";
+  }
+
+  if (!ctx.config_path.empty()) {
+    unlink(ctx.config_path.c_str());
+    ctx.config_path = "";
+  }
+}
 
 void cleanup(void)
 {
-  // Clear and close display
-  display.invertDisplay(false);
-  display.clearDisplay();
-  display.display();
-  display.close();
+  stop_cava(g_cava);
+
+  if (g_display_ptr != nullptr) {
+    g_display_ptr->invertDisplay(false);
+    g_display_ptr->clearDisplay();
+    g_display_ptr->display();
+    g_display_ptr->close();
+  }
 }
 
 void signal_handler(int /*sig*/)
@@ -87,9 +151,9 @@ void init_signals(void)
 }
 
 class OledOpts : public ProgramOpts {
-public:                                 // ### default:
-  const double DEF_SCROLL_RATE = 8;     // pixels per second
-  const double DEF_SCROLL_DELAY = 5;    // second delay before scrolling
+public:
+  const double DEF_SCROLL_RATE = 8;
+  const double DEF_SCROLL_DELAY = 5;
   int bars = 16;
   string cava_method = "fifo";
   string cava_prog_name = "cava";
@@ -109,8 +173,8 @@ public:                                 // ### default:
   bool rotate180 = false;
   bool sleep = false;
   bool spectrum = true;
-  int spi_dc_gpio = OLED_SPI_DC;        // SPI DC
-  int spi_cs = OLED_SPI_CS0;            // SPI CS - 0: CS0, 1: CS1
+  int spi_dc_gpio = OLED_SPI_DC;
+  int spi_cs = OLED_SPI_CS0;
 
   OledOpts() : ProgramOpts(PROG_NAME, VERSION)
   {
@@ -144,48 +208,48 @@ Options
   -B num     I2C bus number               (default: 1 > /dev/i2c-1)
   -b <num>   number of bars to display    (default: 16)
   -C <fmt>   clock format:                (default: 0)
-                0 - 24h leading 0
-                1 - 24h no leading 0
-                2 - 12h leading 0
-                3 - 12h no leading 0
+                 0 - 24h leading 0
+                 1 - 24h no leading 0
+                 2 - 12h leading 0
+                 3 - 12h no leading 0
   -c         cava input method and source (default: %s,%s)
-                e.g. fifo,/tmp/my_fifo, alsa,hw:5,0, pulse
+                 e.g. fifo,/tmp/my_fifo, alsa,hw:5,0, pulse
   -D <gpio>  SPI DC GPIO number           (default: 24)
   -d         use USA format MM-DD-YYYY    (default: DD-MM-YYYY)
   -f <hz>    framerate (Hz)               (default: 15)
   -g <sz>    gap between bars (pixel)     (default: 1)
   -h --help  this info
   -I <val>   invert black/white:          (default: n)
-                n - normal
-                i - invert
-                h - switch between n and i with this period (hour),
-                      which may help avoid screen burn
+                 n - normal
+                 i - invert
+                 h - switch between n and i with this period (hour),
+                     which may help avoid screen burn
   -o <type>  OLED type:                   (default: 6)
 %s
   -P <val>   pause screen type:           (default: p)
-                p - play
-                s - stop
+                 p - play
+                 s - stop
   -R         rotate display 180 degrees
   -r <gpio>  I2C/SPI reset GPIO number    (default: 25)
   -S <num>   SPI CS number                (default: 0)
   -s <vals>  scroll rate and start delay  (default: %.1f,%.1f)
              up to four comma separated decimal values:
-                rate_all
-                rate_all,delay_all
-                rate_title,delay_all,rate_artist
-                rate_title,delay_title,rate_artist,delay_artist
+                 rate_all
+                 rate_all,delay_all
+                 rate_title,delay_all,rate_artist
+                 rate_title,delay_title,rate_artist,delay_artist
   -v         version
-  -X         display all data             (default: spectrum only)
+  -X         display all data              (default: spectrum only)
   -x         display rAudio logo
   -z         clear display
 
 Example :
-%s -o 3 - use a %s OLED
+%s -o 6 - use a %s OLED
 )",
     cava_method.c_str(), cava_source.c_str(),
     oled_type.c_str(),
     DEF_SCROLL_RATE, DEF_SCROLL_DELAY,
-    get_program_name().c_str(), oled_type_str[3]);
+    get_program_name().c_str(), oled_type_str[6]);
 }
 
 void OledOpts::process_command_line(int argc, char **argv)
@@ -223,7 +287,7 @@ void OledOpts::process_command_line(int argc, char **argv)
       break;
 
     case 'c':
-      method_len = 5; // all the initial method strings are length 5!
+      method_len = 5;
       if (strncmp(optarg, "fifo,", method_len) == 0) {
         cava_method = "fifo";
         if (optarg[method_len] == '\0')
@@ -374,7 +438,7 @@ void OledOpts::process_command_line(int argc, char **argv)
   if (oled == 0)
     error("must specify a 128x64 oled", 'o');
 
-  const int min_spect_width = bars + (bars - 1) * gap; // assume bar width = 1
+  const int min_spect_width = bars + (bars - 1) * gap;
   if (min_spect_width > SPECT_WIDTH)
     error(msg_str(
         "spectrum graph width is %d: to display %d bars with a gap of %d\n"
@@ -389,10 +453,10 @@ string print_config_file(int bars, int framerate, string cava_method,
   char templt[] = "/tmp/cava_config_XXXXXX";
   int fd = mkstemp(templt);
   if (fd == -1)
-    return ""; // failed to open file and convert to file stream
+    return "";
   FILE *ofile = fdopen(fd, "w");
   if (ofile == NULL)
-    return ""; // failed to open file and convert to file stream
+    return "";
 
   fprintf(ofile, R"(
 [general]
@@ -420,42 +484,58 @@ bit_format = 8bit
   return templt;
 }
 
-Status start_cava(FILE **p_fifo_file, const OledOpts &opts)
+Status start_cava(CavaContext &ctx, const OledOpts &opts)
 {
+  ctx.fifo_path = msg_str("/tmp/cava_fifo_%d", getpid());
+  unlink(ctx.fifo_path.c_str());
 
-  // Create a FIFO for cava to write its raw output to
-  const string fifo_path_cava_out = msg_str("/tmp/cava_fifo_%d", getpid());
-  unlink(fifo_path_cava_out.c_str());
-  if (mkfifo(fifo_path_cava_out.c_str(), 0666) == -1)
-    opts.error("could not create cava output FIFO for writing: " +
-               string(strerror(errno)));
+  if (mkfifo(ctx.fifo_path.c_str(), 0666) == -1) {
+    opts.error("could not create cava output FIFO for writing: " + string(strerror(errno)));
+    return Status::error("FIFO initialization failed");
+  }
 
-  // Create a temporary config file for cava
-  string config_file_name =
-      print_config_file(opts.bars, opts.framerate, opts.cava_method,
-                        opts.cava_source, fifo_path_cava_out);
-  if (config_file_name == "")
+  ctx.config_path = print_config_file(opts.bars, opts.framerate, opts.cava_method,
+                                       opts.cava_source, ctx.fifo_path);
+  if (ctx.config_path == "") {
+    unlink(ctx.fifo_path.c_str());
     opts.error("could not create cava config file: " + string(strerror(errno)));
+    return Status::error("Configuration creation failed");
+  }
 
-  // Create a pipe to a cava subprocess
-  string cava_cmd = opts.cava_prog_name + " -p " + config_file_name;
-  if (popen(cava_cmd.c_str(), "r") == NULL)
-    opts.error("could not start cava program: " + string(strerror(errno)));
+  ctx.pid = fork();
+  if (ctx.pid < 0) {
+    unlink(ctx.fifo_path.c_str());
+    unlink(ctx.config_path.c_str());
+    opts.error("could not fork process to spawn cava execution context: " + string(strerror(errno)));
+    return Status::error("Fork subprocessing failed");
+  }
+  else if (ctx.pid == 0) {
+    char* args[] = {
+        const_cast<char*>(opts.cava_prog_name.c_str()),
+        const_cast<char*>("-p"),
+        const_cast<char*>(ctx.config_path.c_str()),
+        nullptr
+    };
+    execvp(args[0], args);
+    _exit(EXIT_FAILURE);
+  }
 
-  // Create a file stream to read cava's raw output from
-  *p_fifo_file = fopen(fifo_path_cava_out.c_str(), "rb");
-  if (*p_fifo_file == NULL)
+  ctx.fifo_file = fopen(ctx.fifo_path.c_str(), "rb");
+  if (ctx.fifo_file == NULL) {
+    kill(ctx.pid, SIGKILL);
+    unlink(ctx.fifo_path.c_str());
+    unlink(ctx.config_path.c_str());
     opts.error("could not open cava output FIFO for reading");
+    return Status::error("Reader channel connection failed");
+  }
 
   return Status::ok();
 }
 
-// Draw fullscreen 128x64 clock/date
 void draw_clock(ArduiPi_OLED &display, const display_info &disp_info)
 {
   display.clearDisplay();
-  // const int H = 8;  // character height
-  const int W = 6; // character width
+  const int W = 6;
   draw_text(display, 22, 0, 16, disp_info.conn.get_ip_addr());
   draw_connection(display, 128 - 2 * W, 0, disp_info.conn);
   draw_time(display, 4, 16, 4, disp_info.clock_format);
@@ -464,8 +544,8 @@ void draw_clock(ArduiPi_OLED &display, const display_info &disp_info)
 
 void draw_spect_display(ArduiPi_OLED &display, const display_info &disp_info)
 {
-  const int H = 8; // character height
-  const int W = 6; // character width
+  const int H = 8;
+  const int W = 6;
   draw_spectrum(display, 0, 0, SPECT_WIDTH, 32, disp_info.spect);
   draw_connection(display, 128 - 2 * W, 0, disp_info.conn);
   draw_triangle_slider(display, 128 - 5 * W, 1, 11, 6,
@@ -503,7 +583,7 @@ void draw_display(ArduiPi_OLED &display, const display_info &disp_info)
 
 void draw_logo(ArduiPi_OLED &display)
 {
-  uint8_t bitmap[] = { // 1 bit/pixel
+  uint8_t bitmap[] = {
     0x7F, 0xFF, 0xF0, 0xFF, 0xFE, 0xFF, 0xFF, 0xF0, 0x3F, 0xFF, 0xFF, 0xFF, 0xF0, 0x1F, 0xFF, 0xFF,
     0xFF, 0xF0, 0x0F, 0xFF, 0xFF, 0xFF, 0xF0, 0x07, 0xFF, 0xFF, 0xFF, 0xF0, 0x03, 0xFF, 0xFF, 0xFF,
     0xF0, 0x83, 0xFF, 0xFF, 0xFF, 0xF0, 0xC1, 0xFF, 0xFF, 0xFF, 0xF0, 0xE1, 0xFF, 0xFF, 0xFF, 0xF0,
@@ -523,10 +603,6 @@ void draw_logo(ArduiPi_OLED &display)
   display.drawBitmap( (128 - W) / 2, (64 - H) / 2, bitmap, W, H, WHITE);
 }
 
-namespace {
-pthread_mutex_t disp_info_lock;
-}
-
 void *update_info(void *data)
 {
   const float delay_secs = 0.3;
@@ -536,8 +612,8 @@ void *update_info(void *data)
     display_info disp_info = *disp_info_orig;
     pthread_mutex_unlock(&disp_info_lock);
 
-    disp_info.status.init(); // Update MPD status info
-    disp_info.conn_init();   // Update connection info
+    disp_info.status.init();
+    disp_info.conn_init();
 
     pthread_mutex_lock(&disp_info_lock);
     disp_info_orig->update_from(disp_info);
@@ -554,10 +630,8 @@ bool get_invert(double period)
 
 int start_idle_loop(ArduiPi_OLED &display, const OledOpts &opts)
 {
-  const double update_sec =
-      1 / (0.9 * opts.framerate); // default update freq just under framerate
-  const long select_usec =
-      update_sec * 1100000; // slightly longer, but still less than framerate
+  const double update_sec = 1 / (0.9 * opts.framerate);
+  const long select_usec = update_sec * 1100000;
   Timer timer;
 
   display_info disp_info;
@@ -568,11 +642,8 @@ int start_idle_loop(ArduiPi_OLED &display, const OledOpts &opts)
   disp_info.spect.init(opts.bars, opts.gap);
   disp_info.status.init();
 
-  // Update MPD info in separate thread to avoid stuttering in the spectrum
-  // animation.
   pthread_t update_info_thread;
-  if (pthread_create(&update_info_thread, NULL, update_info,
-                     (void *)(&disp_info))) {
+  if (pthread_create(&update_info_thread, NULL, update_info, (void *)(&disp_info))) {
     fprintf(stderr, "error: could not create pthread\n");
     return 1;
   }
@@ -582,11 +653,9 @@ int start_idle_loop(ArduiPi_OLED &display, const OledOpts &opts)
     return 2;
   }
 
-  // Cava not yet started
   int fifo_fd = -1;
-  FILE *fifo_file = nullptr;
+  int zero_read_cnt = 0;
 
-  int zero_read_cnt = 0; // number of consecutive reads of zero bytes
   while (true) {
     int num_bars_read = 0;
     if (fifo_fd >= 0) {
@@ -594,17 +663,14 @@ int start_idle_loop(ArduiPi_OLED &display, const OledOpts &opts)
       FD_ZERO(&set);
       FD_SET(fifo_fd, &set);
 
-      // FIFO read timeout value
       struct timeval timeout;
       timeout.tv_sec = 0;
-      timeout.tv_usec = select_usec; // slightly longer than timer
+      timeout.tv_usec = select_usec;
 
-      // If there is data read it all.
       if (select(FD_SETSIZE, &set, NULL, NULL, &timeout) > 0) {
         do {
-          num_bars_read =
-              fread(&disp_info.spect.heights[0], sizeof(unsigned char),
-                    disp_info.spect.heights.size(), fifo_file);
+          num_bars_read = fread(&disp_info.spect.heights[0], sizeof(unsigned char),
+                                disp_info.spect.heights.size(), g_cava.fifo_file);
 
           FD_ZERO(&set);
           FD_SET(fifo_fd, &set);
@@ -619,14 +685,11 @@ int start_idle_loop(ArduiPi_OLED &display, const OledOpts &opts)
     else
       zero_read_cnt = 0;
 
-    // Clear spectrum data if no data available or music not playing
     if (zero_read_cnt > 1 || disp_info.status.get_state() != MPD_STATE_PLAY) {
-      std::fill(disp_info.spect.heights.begin(), disp_info.spect.heights.end(),
-                0);
-      usleep(0.1 * 1000000); // 0.1 sec delay, don't idle too fast if no need
+      std::fill(disp_info.spect.heights.begin(), disp_info.spect.heights.end(), 0);
+      usleep(0.1 * 1000000);
     }
 
-    // Update display if necessary
     if (timer.finished() || num_bars_read) {
       display.clearDisplay();
       pthread_mutex_lock(&disp_info_lock);
@@ -643,11 +706,11 @@ int start_idle_loop(ArduiPi_OLED &display, const OledOpts &opts)
     if (timer.finished()) {
       display.reset_offset();
       if (disp_info.status.get_state() == MPD_STATE_PLAY && fifo_fd < 0) {
-        opts.print_status_or_exit(start_cava(&fifo_file, opts));
-        fifo_fd = fileno(fifo_file);
+        opts.print_status_or_exit(start_cava(g_cava, opts));
+        fifo_fd = fileno(g_cava.fifo_file);
       }
 
-      timer.set_timer(update_sec); // Reset the timer
+      timer.set_timer(update_sec);
     }
   }
 
@@ -656,12 +719,12 @@ int start_idle_loop(ArduiPi_OLED &display, const OledOpts &opts)
 
 int main(int argc, char **argv)
 {
-  // Set locale to allow iconv transliteration to US-ASCII
   setlocale(LC_CTYPE, "C.UTF-8");
   OledOpts opts;
   opts.process_command_line(argc, argv);
 
-  // Set up the OLED doisplay
+  g_display_ptr = &display;
+
   if (!init_display(display, opts.oled, opts.i2c_addr, opts.i2c_bus,
                     opts.reset_gpio, opts.spi_dc_gpio, opts.spi_cs,
                     opts.rotate180))
@@ -682,6 +745,7 @@ int main(int argc, char **argv)
 
   init_signals();
   atexit(cleanup);
+
   int loop_ret = start_idle_loop(display, opts);
 
   if (loop_ret != 0)
