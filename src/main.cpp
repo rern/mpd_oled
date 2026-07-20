@@ -101,15 +101,7 @@ void stop_cava(CavaContext &ctx)
     ctx.fifo_file = nullptr;
   }
 
-  if (!ctx.fifo_path.empty()) {
-    unlink(ctx.fifo_path.c_str());
-    ctx.fifo_path = "";
-  }
-
-  // Note: ctx.config_path now points at the fixed CAVA_CONFIG_PATH
-  // ("/etc/mpd_oled.conf"), not a per-run temp file, so it is left in
-  // place on teardown rather than unlinked. It gets rewritten in full
-  // the next time start_cava() runs.
+  ctx.fifo_path = "";
   ctx.config_path = "";
 }
 
@@ -448,11 +440,7 @@ void OledOpts::process_command_line(int argc, char **argv)
         SPECT_WIDTH, bars, gap, min_spect_width));
 }
 
-// Fixed, well-known location for the generated cava config. Using a stable
-// path (rather than a per-run mkstemp() file) means the config is easy to
-// find, and it plays well with process supervisors that may want to inspect
-// it after mpd_oled starts.
-const string CAVA_CONFIG_PATH = "/etc/mpd_oled.conf";
+const string CAVA_CONFIG_PATH = "/tmp/mpd_oled.conf";
 
 string print_config_file(int bars, int framerate, string cava_method,
                          string cava_source, string fifo_path_cava_out)
@@ -487,33 +475,33 @@ bit_format = 8bit
   return CAVA_CONFIG_PATH;
 }
 
-// Fixed FIFO path used to pipe raw spectrum data from cava into mpd_oled.
-// mpd_oled only ever runs a single cava instance at a time, so a stable
-// path (rather than one keyed to the current PID) is simpler to reason
-// about and to inspect/debug from outside the process.
 const string CAVA_FIFO_PATH = "/tmp/cava_fifo";
 
 Status start_cava(CavaContext &ctx, const OledOpts &opts)
 {
   ctx.fifo_path = CAVA_FIFO_PATH;
-  unlink(ctx.fifo_path.c_str());
 
-  if (mkfifo(ctx.fifo_path.c_str(), 0666) == -1) {
-    opts.error("could not create cava output FIFO for writing: " + string(strerror(errno)));
+  struct stat st;
+  if (stat(ctx.fifo_path.c_str(), &st) != 0) {
+    if (mkfifo(ctx.fifo_path.c_str(), 0666) == -1) {
+      opts.error("could not create cava output FIFO for writing: " + string(strerror(errno)));
+      return Status::error("FIFO initialization failed");
+    }
+  }
+  else if (!S_ISFIFO(st.st_mode)) {
+    opts.error(ctx.fifo_path + " exists and is not a FIFO");
     return Status::error("FIFO initialization failed");
   }
 
   ctx.config_path = print_config_file(opts.bars, opts.framerate, opts.cava_method,
                                        opts.cava_source, ctx.fifo_path);
   if (ctx.config_path == "") {
-    unlink(ctx.fifo_path.c_str());
     opts.error("could not create cava config file: " + string(strerror(errno)));
     return Status::error("Configuration creation failed");
   }
 
   ctx.pid = fork();
   if (ctx.pid < 0) {
-    unlink(ctx.fifo_path.c_str());
     opts.error("could not fork process to spawn cava execution context: " + string(strerror(errno)));
     return Status::error("Fork subprocessing failed");
   }
@@ -531,7 +519,6 @@ Status start_cava(CavaContext &ctx, const OledOpts &opts)
   ctx.fifo_file = fopen(ctx.fifo_path.c_str(), "rb");
   if (ctx.fifo_file == NULL) {
     kill(ctx.pid, SIGKILL);
-    unlink(ctx.fifo_path.c_str());
     opts.error("could not open cava output FIFO for reading");
     return Status::error("Reader channel connection failed");
   }
