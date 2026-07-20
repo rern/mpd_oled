@@ -106,10 +106,11 @@ void stop_cava(CavaContext &ctx)
     ctx.fifo_path = "";
   }
 
-  if (!ctx.config_path.empty()) {
-    unlink(ctx.config_path.c_str());
-    ctx.config_path = "";
-  }
+  // Note: ctx.config_path now points at the fixed CAVA_CONFIG_PATH
+  // ("/etc/mpd_oled.conf"), not a per-run temp file, so it is left in
+  // place on teardown rather than unlinked. It gets rewritten in full
+  // the next time start_cava() runs.
+  ctx.config_path = "";
 }
 
 void cleanup(void)
@@ -156,7 +157,7 @@ public:
   const double DEF_SCROLL_DELAY = 5;
   int bars = 16;
   string cava_method = "fifo";
-  string cava_prog_name = "cava";
+  string cava_prog_name = "/usr/bin/cava";
   string cava_source = "/tmp/mpd.fifo";
   int clock_format = 0;
   int date_format = 0;
@@ -350,7 +351,7 @@ void OledOpts::process_command_line(int argc, char **argv)
       break;
 
     case 'k':
-      cava_prog_name = "cava";
+      cava_prog_name = "/usr/bin/cava";
       break;
 
     case 'o':
@@ -447,14 +448,16 @@ void OledOpts::process_command_line(int argc, char **argv)
         SPECT_WIDTH, bars, gap, min_spect_width));
 }
 
+// Fixed, well-known location for the generated cava config. Using a stable
+// path (rather than a per-run mkstemp() file) means the config is easy to
+// find, and it plays well with process supervisors that may want to inspect
+// it after mpd_oled starts.
+const string CAVA_CONFIG_PATH = "/etc/mpd_oled.conf";
+
 string print_config_file(int bars, int framerate, string cava_method,
                          string cava_source, string fifo_path_cava_out)
 {
-  char templt[] = "/tmp/cava_config_XXXXXX";
-  int fd = mkstemp(templt);
-  if (fd == -1)
-    return "";
-  FILE *ofile = fdopen(fd, "w");
+  FILE *ofile = fopen(CAVA_CONFIG_PATH.c_str(), "w");
   if (ofile == NULL)
     return "";
 
@@ -481,12 +484,18 @@ bit_format = 8bit
     fifo_path_cava_out.c_str()
   );
   fclose(ofile);
-  return templt;
+  return CAVA_CONFIG_PATH;
 }
+
+// Fixed FIFO path used to pipe raw spectrum data from cava into mpd_oled.
+// mpd_oled only ever runs a single cava instance at a time, so a stable
+// path (rather than one keyed to the current PID) is simpler to reason
+// about and to inspect/debug from outside the process.
+const string CAVA_FIFO_PATH = "/tmp/cava_fifo";
 
 Status start_cava(CavaContext &ctx, const OledOpts &opts)
 {
-  ctx.fifo_path = msg_str("/tmp/cava_fifo_%d", getpid());
+  ctx.fifo_path = CAVA_FIFO_PATH;
   unlink(ctx.fifo_path.c_str());
 
   if (mkfifo(ctx.fifo_path.c_str(), 0666) == -1) {
@@ -505,7 +514,6 @@ Status start_cava(CavaContext &ctx, const OledOpts &opts)
   ctx.pid = fork();
   if (ctx.pid < 0) {
     unlink(ctx.fifo_path.c_str());
-    unlink(ctx.config_path.c_str());
     opts.error("could not fork process to spawn cava execution context: " + string(strerror(errno)));
     return Status::error("Fork subprocessing failed");
   }
@@ -524,7 +532,6 @@ Status start_cava(CavaContext &ctx, const OledOpts &opts)
   if (ctx.fifo_file == NULL) {
     kill(ctx.pid, SIGKILL);
     unlink(ctx.fifo_path.c_str());
-    unlink(ctx.config_path.c_str());
     opts.error("could not open cava output FIFO for reading");
     return Status::error("Reader channel connection failed");
   }
