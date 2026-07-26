@@ -165,6 +165,12 @@ public:
   int reset_gpio = 25;
   bool rotate180 = false;
   bool sleep = false;
+  // true  ("spectrum only", default): only the spectrum bars are ever drawn.
+  //       No clock, no track title/artist, no connection icon, no volume
+  //       slider, no bitrate -- nothing but the bars, full screen.
+  // false (set via -X, "display all data"): the richer combined view is
+  //       drawn instead (clock when stopped/paused, spectrum + track info
+  //       when playing).
   bool spectrum = true;
   int spi_dc_gpio = OLED_SPI_DC;
   int spi_cs = OLED_SPI_CS0;
@@ -565,6 +571,10 @@ void draw_spect_display(ArduiPi_OLED &display, const display_info &disp_info)
                     100 * disp_info.status.get_progress());
 }
 
+// Combined "display all data" view: clock while stopped/paused, otherwise
+// the spectrum bars plus track title/artist, connection icon, volume slider,
+// bitrate and clock. Only ever reached in -X ("display all data") mode --
+// see draw_frame() below.
 void draw_display(ArduiPi_OLED &display, const display_info &disp_info)
 {
   mpd_state state = disp_info.status.get_state();
@@ -573,6 +583,23 @@ void draw_display(ArduiPi_OLED &display, const display_info &disp_info)
     draw_clock(display, disp_info);
   else
     draw_spect_display(display, disp_info);
+}
+
+// Single, explicit entry point for what gets put on the OLED each frame.
+//
+//   spectrum_only == true  (default, "spectrum only"): draw nothing but the
+//   full-screen spectrum bars. No clock, no track title/artist, no
+//   connection icon, no volume slider, no bitrate -- regardless of MPD's
+//   play/pause/stop state.
+//
+//   spectrum_only == false (set via -X, "display all data"): draw the
+//   richer combined view via draw_display().
+void draw_frame(ArduiPi_OLED &display, const display_info &disp_info, bool spectrum_only)
+{
+  if (spectrum_only)
+    draw_spectrum(display, 0, 0, 128, 64, disp_info.spect);
+  else
+    draw_display(display, disp_info);
 }
 
 void draw_logo(ArduiPi_OLED &display)
@@ -615,7 +642,8 @@ void *update_info(void *data)
 
     usleep(delay_secs * 1000000);
   }
-};
+  return nullptr;
+}
 
 bool get_invert(double period)
 {
@@ -636,15 +664,18 @@ int start_idle_loop(ArduiPi_OLED &display, const OledOpts &opts)
   disp_info.spect.init(opts.bars, opts.gap);
   disp_info.status.init();
 
+  // The mutex must be fully initialized *before* the thread that will lock
+  // it is created -- otherwise update_info() can start running and call
+  // pthread_mutex_lock() on a mutex that hasn't been constructed yet.
+  if (pthread_mutex_init(&disp_info_lock, NULL) != 0) {
+    fprintf(stderr, "error: could not create pthread mutex\n");
+    return 2;
+  }
+
   pthread_t update_info_thread;
   if (pthread_create(&update_info_thread, NULL, update_info, (void *)(&disp_info))) {
     fprintf(stderr, "error: could not create pthread\n");
     return 1;
-  }
-
-  if (pthread_mutex_init(&disp_info_lock, NULL) != 0) {
-    fprintf(stderr, "error: could not create pthread mutex\n");
-    return 2;
   }
 
   int fifo_fd = -1;
@@ -688,11 +719,7 @@ int start_idle_loop(ArduiPi_OLED &display, const OledOpts &opts)
       display.clearDisplay();
       pthread_mutex_lock(&disp_info_lock);
       display.invertDisplay(get_invert(opts.invert));
-      if (opts.spectrum)
-        draw_spectrum(display, 0, 0, 128, 64, disp_info.spect);
-      else
-        draw_display(display, disp_info);
-
+      draw_frame(display, disp_info, opts.spectrum);
       pthread_mutex_unlock(&disp_info_lock);
       display.display();
     }
