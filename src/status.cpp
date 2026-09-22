@@ -267,6 +267,28 @@ void mpd_info::print_vals() const
   fprintf(stdout, "kbitrate: %d\n", kbitrate);
 }
 
+auto getJsonValue = [](const char* src, const char* key, char* dest, size_t max_len) {
+    std::string pattern = "\"" + std::string(key) + "\": \"";
+    char *start = strstr((char*)src, pattern.c_str());
+    if (!start) return false;
+    
+    start += pattern.length();
+    size_t i = 0;
+    
+    while (*start && i < max_len - 1) {
+        if (*start == '\\' && *(start + 1) == '"') {
+            dest[i++] = '"'; // Unescape \" into a literal "
+            start += 2;
+        } else if (*start == '"') {
+            break; // Closing quote found
+        } else {
+            dest[i++] = *start++;
+        }
+    }
+    dest[i] = '\0';
+    return true;
+};
+
 int mpd_info::init()
 {
   struct mpd_connection *conn = mpd_connection_new(NULL, 0, 30000);
@@ -276,37 +298,28 @@ int mpd_info::init()
   mpd_connection_free(conn);
 
   state = MPD_STATE_UNKNOWN;
-  const char *STATUS_FILE = "/dev/shm/status";
+  const char *STATUS_FILE = "/dev/shm/status.json";
   FILE *file = fopen(STATUS_FILE, "r");
   if (file != NULL) {
     int line_sz = 256;
     char line[line_sz];
 
-    char file_name[line_sz] = {0};
     char artist_name[line_sz] = {0};
-    char album_name[line_sz] = {0};
     char title_name[line_sz] = {0};
     char buff[line_sz];
 
     while (fgets(line, line_sz - 1, file)) {
-      if (sscanf(line, "file=\"%[^\"\n]", buff) == 1)
-        strcpy(file_name, buff);
-      else if (sscanf(line, "Artist=\"%[^\"\n]", buff) == 1)
+      if (getJsonValue(line, "Artist", buff, line_sz))
         strcpy(artist_name, buff);
-      else if (sscanf(line, "Album=\"%[^\"\n]", buff) == 1)
-        strcpy(album_name, buff);
-      else if (sscanf(line, "Title=\"%[^\"\n]", buff) == 1)
+      else if (getJsonValue(line, "Title", buff, line_sz))
         strcpy(title_name, buff);
-      else if (sscanf(line, "state=\"%[^\"\n]", buff) == 1) {
+      else if (getJsonValue(line, "state", buff, line_sz)) {
         if (strcmp(buff, "stop") == 0)
           state = MPD_STATE_STOP;
         else if (strcmp(buff, "play") == 0)
           state = MPD_STATE_PLAY;
         else if (strcmp(buff, "pause") == 0)
           state = MPD_STATE_PAUSE;
-      }
-      else if (sscanf(line, "volume=%[^\n]", buff) == 1) {
-        volume =  std::__cxx11::stoi(buff);
       }
     }
     fclose(file);
