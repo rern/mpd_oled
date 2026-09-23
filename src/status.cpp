@@ -31,6 +31,9 @@
 
 #include <mpd/client.h>
 
+#include "hjson_cpp/hjson.h"
+#include "http_tiny/http_lib.h"
+
 #include <arpa/inet.h>
 #include <assert.h>
 #include <net/if.h>
