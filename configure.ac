@@ -94,8 +94,6 @@ AC_LANG_POP([C++])
 
 AC_CONFIG_FILES([Makefile
                  src/Makefile
-                 src/hjson_cpp/Makefile
-                 src/http_tiny/Makefile
                  ])
 
 AC_OUTPUT
