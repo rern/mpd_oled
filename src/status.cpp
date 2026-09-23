@@ -152,11 +152,12 @@ int get_mpd_kbitrate(struct mpd_connection *conn)
   mpd_send_status(conn);
   mpd_command_list_end(conn);
 
+  int _state = MPD_STATE_UNKNOWN;
   int kbitrate = 0;
   struct mpd_status *status = mpd_recv_status(conn);
   if (status != NULL) {
-    int stat = mpd_status_get_state(status);
-    if (stat == MPD_STATE_PLAY || stat == MPD_STATE_PAUSE)
+    _state = mpd_status_get_state(status);
+    if (_state == MPD_STATE_PLAY || _state == MPD_STATE_PAUSE)
       kbitrate = mpd_status_get_kbit_rate(status);
     mpd_status_free(status);
   }
@@ -265,19 +266,27 @@ void mpd_info::print_vals() const
 }
 
 auto getJsonValue = [](const char* src, const char* key, char* dest, size_t max_len) {
-    std::string pattern = "\"" + std::string(key) + "\": \"";
-    char *start = strstr((char*)src, pattern.c_str());
+    std::string keyPattern = "\"" + std::string(key) + "\"";
+    const char *start = strstr(src, keyPattern.c_str());
     if (!start) return false;
-    
-    start += pattern.length();
+
+    start += keyPattern.length();
+
+    while (*start == ' ') start++;   // skip whitespace before colon
+    if (*start != ':') return false;
+    start++;
+
+    while (*start == ' ') start++;   // skip whitespace after colon
+    if (*start != '"') return false;
+    start++;                         // move past opening quote
+
     size_t i = 0;
-    
     while (*start && i < max_len - 1) {
         if (*start == '\\' && *(start + 1) == '"') {
-            dest[i++] = '"'; // Unescape \" into a literal "
+            dest[i++] = '"';
             start += 2;
         } else if (*start == '"') {
-            break; // Closing quote found
+            break;
         } else {
             dest[i++] = *start++;
         }
@@ -303,20 +312,19 @@ int mpd_info::init()
 
     char artist_name[line_sz] = {0};
     char title_name[line_sz] = {0};
+    char state_name[line_sz] = {0};
     char buff[line_sz];
 
     while (fgets(line, line_sz - 1, file)) {
-      if (getJsonValue(line, "Artist", buff, line_sz))
+      if (getJsonValue(line, "Artist", buff, line_sz)) {
         strcpy(artist_name, buff);
-      else if (getJsonValue(line, "Title", buff, line_sz))
+      } else if (getJsonValue(line, "Title", buff, line_sz)) {
         strcpy(title_name, buff);
-      else if (getJsonValue(line, "state", buff, line_sz)) {
-        if (strcmp(buff, "stop") == 0)
-          state = MPD_STATE_STOP;
-        else if (strcmp(buff, "play") == 0)
-          state = MPD_STATE_PLAY;
-        else if (strcmp(buff, "pause") == 0)
-          state = MPD_STATE_PAUSE;
+      } else if (getJsonValue(line, "state", buff, line_sz)) {
+        strcpy(state_name, buff);
+             if (strcmp(state_name, "stop") == 0)  state = MPD_STATE_STOP;
+        else if (strcmp(state_name, "play") == 0)  state = MPD_STATE_PLAY;
+        else if (strcmp(state_name, "pause") == 0) state = MPD_STATE_PAUSE;
       }
     }
     fclose(file);
